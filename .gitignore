@@ -26,3 +26,4 @@ dotnet/runfile-discovery/
 Thumbs.db
 
 tmp/
+publish/

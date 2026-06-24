@@ -1,0 +1,94 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: |
+            OilFieldPlatform.Calculation/OilFieldPlatform.Calculation.WebClient/package-lock.json
+
+      - name: Restore .NET
+        run: dotnet restore -r linux-x64
+
+      - name: Build + Publish server (self-contained)
+        run: |
+          dotnet publish OilFieldPlatform.Calculation/OilFieldPlatform.Calculation.Server \
+            --configuration Release \
+            --self-contained true -r linux-x64 \
+            --output publish/server
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: OilFieldPlatform.Calculation/OilFieldPlatform.Calculation.WebClient
+
+      - name: Build frontend
+        run: npm run build
+        working-directory: OilFieldPlatform.Calculation/OilFieldPlatform.Calculation.WebClient
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: |
+            publish/
+            OilFieldPlatform.Calculation/OilFieldPlatform.Calculation.WebClient/dist/
+
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs: build
+    environment: production
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: release
+
+      - name: Deploy via rsync
+        env:
+          SSH_ADDR: ${{ vars.SSH_USER }}@${{ vars.SSH_HOST }}
+          SSH_OPTIONS: -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10
+          SSH_PATH: ${{ vars.SSH_PATH }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+          ssh ${SSH_OPTIONS} ${SSH_ADDR} "echo 'SSH connection successful'"
+
+          # Deploy server
+          rsync -avz --delete \
+            -e "ssh ${SSH_OPTIONS}" \
+            release/server/ \
+            ${SSH_ADDR}:${SSH_PATH}/app/server/
+
+          # Deploy frontend to server's www root
+          rsync -avz --delete \
+            -e "ssh ${SSH_OPTIONS}" \
+            release/dist/ \
+            ${SSH_ADDR}:${SSH_PATH}/www/
+
+          # Restart service
+          ssh ${SSH_OPTIONS} ${SSH_ADDR} "cd ${SSH_PATH} && touch reload"
+
+          rm -f ~/.ssh/id_rsa
