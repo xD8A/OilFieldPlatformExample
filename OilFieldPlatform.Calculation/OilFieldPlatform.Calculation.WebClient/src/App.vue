@@ -71,10 +71,11 @@ onMounted(() => {
     const state = msg.state
     if (state && state.project) {
       projectName.value = state.project.name
+      isChanged.value = state.project.isChanged
     } else {
       projectName.value = ''
+      isChanged.value = false
     }
-    isChanged.value = state ? state.isChanged : false
   }))
 
   unsubs.push(onProjectOpened(() => {

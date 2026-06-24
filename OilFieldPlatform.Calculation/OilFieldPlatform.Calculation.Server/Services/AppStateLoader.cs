@@ -36,7 +36,7 @@ public sealed class AppStateLoader
 
     private sealed record ProjectSnapshot(
         long? Id, OilFieldSnapshot OilField, DevTargetSnapshot DevTarget,
-        IReadOnlyList<WaterSampleSnapshot> WaterSamples);
+        IReadOnlyList<WaterSampleSnapshot> WaterSamples, bool IsChanged);
 
     private sealed record StateSnapshot(ProjectSnapshot? Project);
 
@@ -105,7 +105,8 @@ public sealed class AppStateLoader
             project.Id,
             new OilFieldSnapshot(project.OilField.Id, project.OilField.Name),
             new DevTargetSnapshot(project.DevTarget.Id, project.DevTarget.Name),
-            project.WaterSamples.Select(ToSnapshot).ToList()));
+            project.WaterSamples.Select(ToSnapshot).ToList(),
+            project.IsChanged));
     }
 
     private static WaterSampleSnapshot ToSnapshot(WaterSampleModel s)
@@ -132,6 +133,11 @@ public sealed class AppStateLoader
 
         foreach (var ws in ps.WaterSamples)
             project.AddWaterSample(FromSnapshot(ws, project));
+
+        if (ps.IsChanged)
+            project.MarkChanged();
+        else
+            project.MarkUnchanged();
 
         return new ApplicationState { Project = project };
     }
