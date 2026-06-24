@@ -78,14 +78,15 @@ jobs:
 
           # Deploy server
           rsync -avz --delete \
+            --exclude appsettings.json \
             -e "ssh ${SSH_OPTIONS}" \
-            release/server/ \
+            release/publish/server/ \
             ${SSH_ADDR}:${SSH_PATH}/app/server/
 
           # Deploy frontend to server's www root
           rsync -avz --delete \
             -e "ssh ${SSH_OPTIONS}" \
-            release/dist/ \
+            release/OilFieldPlatform.Calculation/OilFieldPlatform.Calculation.WebClient/dist/ \
             ${SSH_ADDR}:${SSH_PATH}/www/
 
           # Restart service
