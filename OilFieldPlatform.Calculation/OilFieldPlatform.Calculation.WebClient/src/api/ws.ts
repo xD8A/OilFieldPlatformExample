@@ -133,3 +133,7 @@ export function onAutoCalcSet(cb: (msg: WaterSampleAutoCalcSetResponse) => void)
 export function onLog(cb: (msg: LogResponse) => void): () => void {
   return ws.on(LogResponse_type, cb)
 }
+
+export function onOpen(fn: () => void): () => void {
+  return ws.onOpen(fn)
+}

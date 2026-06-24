@@ -11,6 +11,7 @@ using OilFieldPlatform.Infrastructure.Mapping.Calculation;
 using OilFieldPlatform.Infrastructure.Providers;
 using OilFieldPlatform.Infrastructure.Repositories.Calculation;
 using OilFieldPlatform.Infrastructure.Settings;
+using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -20,6 +21,12 @@ builder.Logging.AddNLog();
 builder.Services.AddOpenApi();
 
 // NHibernate (singleton — фабрики и настройки)
+builder.Services.AddSingleton(sp =>
+{
+    var settings = new RedisSettings();
+    sp.GetRequiredService<IConfiguration>().GetSection("Redis").Bind(settings);
+    return settings;
+});
 builder.Services.AddSingleton(sp =>
 {
     var settings = new DbSettings();
@@ -39,6 +46,14 @@ builder.Services.AddSingleton(sp =>
         m.FluentMappings.AddFromAssemblyOf<CalcProjectMap>());
     return fluentConfig.BuildSessionFactory();
 });
+
+// Redis
+builder.Services.AddSingleton(sp =>
+{
+    var settings = sp.GetRequiredService<RedisSettings>();
+    return ConnectionMultiplexer.Connect(settings.ConnectionString);
+});
+builder.Services.AddScoped<AppStateLoader>();
 
 // Всё остальное — scoped (новый набор на каждое WebSocket-соединение)
 builder.Services.AddScoped<NHibernate.ISession>(sp =>
@@ -93,6 +108,9 @@ app.Map("/ws", async (HttpContext context) =>
         using var scope = context.RequestServices.CreateScope();
         using var ws = await context.WebSockets.AcceptWebSocketAsync();
         var webSocketService = scope.ServiceProvider.GetRequiredService<WebSocketService>();
+        var sessionId = context.Request.Query["sessionId"].FirstOrDefault();
+        if (sessionId is not null)
+            webSocketService.SessionId = sessionId;
         UserNameProvider.SetContextUser("test");
         await webSocketService.HandleAsync(ws, context.RequestAborted);
     }

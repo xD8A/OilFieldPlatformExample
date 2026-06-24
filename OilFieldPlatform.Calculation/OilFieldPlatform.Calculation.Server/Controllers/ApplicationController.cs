@@ -102,12 +102,22 @@ public class ApplicationController : IWebSocketController, IDisposable
     public void CloseProject()
     {
         _logger.LogDebug("Closing project");
+
         var project = _state.Project;
         if (project is not null)
             project.MarkUnchanged();
         _state.Project = null;
         _logger.LogInformation("Project closed");
     }
+
+    /// <summary>Восстановить состояние из переданного ApplicationState.</summary>
+    public void RestoreState(ApplicationState state)
+    {
+        _state.Project = state.Project;
+    }
+
+    /// <summary>Получить состояние приложения для сериализации.</summary>
+    public ApplicationState GetApplicationState() => _state;
 
     /// <summary>Обработать запрос списка проектов.</summary>
     public ApplicationListProjectsResponse HandleListProject()

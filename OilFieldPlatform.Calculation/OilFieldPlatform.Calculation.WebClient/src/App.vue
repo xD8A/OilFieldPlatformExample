@@ -36,6 +36,7 @@ import {
   onProjects, onAppState, onProjectOpened, onProjectSaved, onProjectClosed,
   onIsChanged, onWaterSampleState, onWaterSampleConnected,
   onWaterSampleChanged, onWaterSampleCalculated, onAutoCalcSet,
+  onOpen,
 } from './api/ws.js'
 import AppHeader from './components/AppHeader.vue'
 import ProjectDialog from './components/ProjectDialog.vue'
@@ -130,6 +131,12 @@ onMounted(() => {
     if (msg.isAuto !== undefined) {
       isAutoCalc.value = msg.isAuto
     }
+  }))
+
+  // После открытия соединения проверить состояние (восстановленная сессия)
+  unsubs.push(onOpen(() => {
+    getAppState()
+    getWaterSampleState()
   }))
 })
 

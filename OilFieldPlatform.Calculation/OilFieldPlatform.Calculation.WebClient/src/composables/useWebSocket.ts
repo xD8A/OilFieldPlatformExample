@@ -2,8 +2,13 @@ import { ref, type Ref } from 'vue'
 import * as Req from '../api/schemas/requests/index.js'
 import * as Res from '../api/schemas/responses/index.js'
 
+const SESSION_KEY = 'ws_session'
+
 type Listener = (msg: any) => void
+type OpenHandler = () => void
+
 const listeners: Record<string, Listener[]> = {}
+const openHandlers: OpenHandler[] = []
 let ws: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let connectResolve: (() => void) | null = null
@@ -12,6 +17,11 @@ export const connected: Ref<boolean> = ref(false)
 export const connecting: Ref<boolean> = ref(false)
 
 export { Req, Res }
+
+/** Сохранённый sessionId (из session.info). */
+export function getSessionId(): string | null {
+  return localStorage.getItem(SESSION_KEY)
+}
 
 export function useWebSocket() {
   function connect(): Promise<void> | undefined {
@@ -25,7 +35,8 @@ export function useWebSocket() {
     })
 
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const url = `${protocol}//${location.host}/ws`
+    const sid = localStorage.getItem(SESSION_KEY)
+    const url = sid ? `${protocol}//${location.host}/ws?sessionId=${sid}` : `${protocol}//${location.host}/ws`
     ws = new WebSocket(url)
 
     ws.onopen = () => {
@@ -35,6 +46,7 @@ export function useWebSocket() {
         connectResolve()
         connectResolve = null
       }
+      openHandlers.forEach(fn => fn())
     }
 
     ws.onclose = () => {
@@ -51,6 +63,11 @@ export function useWebSocket() {
     ws.onmessage = (event: MessageEvent) => {
       try {
         const msg = JSON.parse(event.data as string)
+
+        if (msg.type === 'session.info' && msg.sessionId) {
+          localStorage.setItem(SESSION_KEY, msg.sessionId)
+        }
+
         if (listeners[msg.type]) {
           listeners[msg.type].forEach(fn => fn(msg))
         }
@@ -87,6 +104,14 @@ export function useWebSocket() {
     }
   }
 
+  function onOpen(fn: OpenHandler): () => void {
+    openHandlers.push(fn)
+    return () => {
+      const idx = openHandlers.indexOf(fn)
+      if (idx !== -1) openHandlers.splice(idx, 1)
+    }
+  }
+
   function disconnect(): void {
     clearTimeout(reconnectTimer!)
     if (ws) {
@@ -98,5 +123,5 @@ export function useWebSocket() {
     connecting.value = false
   }
 
-  return { connect, send, on, disconnect, connected, connecting }
+  return { connect, send, on, onOpen, disconnect, connected, connecting }
 }

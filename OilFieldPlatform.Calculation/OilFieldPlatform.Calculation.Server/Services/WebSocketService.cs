@@ -1,4 +1,5 @@
 using System.Net.WebSockets;
+using System.Reactive.Linq;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -19,7 +20,11 @@ public sealed class WebSocketService : IDisposable
     };
 
     private readonly ILogger _logger;
+    private readonly AppStateLoader _stateLoader;
     private bool _disposed;
+
+    /// <summary>Идентификатор сессии (из query-параметра или случайный).</summary>
+    public string SessionId { get; set; } = Guid.NewGuid().ToString("N");
 
     /// <summary>Контроллер приложения.</summary>
     public ApplicationController Application { get; }
@@ -28,15 +33,14 @@ public sealed class WebSocketService : IDisposable
     public WaterSamplePageController WaterSamplePage { get; }
 
     /// <summary>Конструктор.</summary>
-    /// <param name="application">Контроллер приложения.</param>
-    /// <param name="waterSamplePage">Контроллер страницы проб воды.</param>
-    /// <param name="logger">Логгер (опционально).</param>
     public WebSocketService(
         ApplicationController application,
         WaterSamplePageController waterSamplePage,
+        AppStateLoader stateLoader,
         ILogger<WebSocketService>? logger = null)
     {
         _logger = (ILogger?)logger ?? NullLogger.Instance;
+        _stateLoader = stateLoader;
 
         Application = application;
         WaterSamplePage = waterSamplePage;
@@ -58,17 +62,45 @@ public sealed class WebSocketService : IDisposable
     public async Task HandleAsync(WebSocket webSocket, CancellationToken ct = default)
     {
         _currentSocket = webSocket;
-        _logger.LogDebug("WebSocket connection opened");
+        _logger.LogDebug("WebSocket connection opened, session={SessionId}", SessionId);
+
+        await SendAsync(JsonSerializer.Serialize(
+            new { type = "session.info", sessionId = SessionId }, _jsonOptions), ct);
+
+        await RestoreStateAsync();
+
+        // Автосохранение при изменении проекта или его данных
+        var appState = Application.GetApplicationState();
+        var saveSub = appState.ProjectAsObservable
+            .Select(p => p?.IsChangedAsObservable ?? Observable.Return(false))
+            .Switch()
+            .Throttle(TimeSpan.FromSeconds(5))
+            .Subscribe(async _ =>
+            {
+                try { await SaveStateAsync(); }
+                catch (Exception ex) { _logger.LogWarning(ex, "Auto-save failed"); }
+            });
 
         var buffer = new byte[1024 * 16];
+        var lastSave = DateTime.UtcNow;
 
         while (webSocket.State == WebSocketState.Open && !ct.IsCancellationRequested)
         {
-            WebSocketReceiveResult result;
+            var saveDelay = TimeSpan.FromMinutes(1) - (DateTime.UtcNow - lastSave);
+            var delayTask = Task.Delay(saveDelay > TimeSpan.Zero ? saveDelay : TimeSpan.Zero, ct);
+            var receiveTask = webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), ct);
 
+            if (await Task.WhenAny(receiveTask, delayTask) == delayTask)
+            {
+                await SaveStateAsync();
+                lastSave = DateTime.UtcNow;
+                continue;
+            }
+
+            WebSocketReceiveResult result;
             try
             {
-                result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), ct);
+                result = await receiveTask;
             }
             catch (WebSocketException ex)
             {
@@ -97,8 +129,28 @@ public sealed class WebSocketService : IDisposable
             }
         }
 
+        await SaveStateAsync();
+        saveSub.Dispose();
+
         _currentSocket = null;
-        _logger.LogDebug("WebSocket connection closed");
+        _logger.LogDebug("WebSocket connection closed, session={SessionId}", SessionId);
+    }
+
+    private async Task RestoreStateAsync()
+    {
+        var state = await _stateLoader.LoadAsync(SessionId);
+        if (state is not null)
+        {
+            Application.RestoreState(state);
+            _logger.LogInformation("Session {SessionId}: state restored", SessionId);
+        }
+    }
+
+    private async Task SaveStateAsync()
+    {
+        var state = Application.GetApplicationState();
+        await _stateLoader.SaveAsync(SessionId, state);
+        _logger.LogDebug("Session {SessionId}: state saved", SessionId);
     }
 
     private async Task ProcessMessageAsync(string json, CancellationToken ct)
