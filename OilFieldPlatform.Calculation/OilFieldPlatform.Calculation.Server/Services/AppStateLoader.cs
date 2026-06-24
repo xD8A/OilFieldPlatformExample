@@ -13,6 +13,7 @@ public sealed class AppStateLoader
     private readonly ILogger<AppStateLoader> _logger;
 
     private const string KeyPrefix = "session:";
+    private static readonly TimeSpan KeyTtl = TimeSpan.FromDays(7);
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -54,7 +55,7 @@ public sealed class AppStateLoader
         var key = $"{KeyPrefix}{sessionId}:state";
         var snapshot = ToSnapshot(state);
         var json = JsonSerializer.Serialize(snapshot, _jsonOptions);
-        await db.StringSetAsync(key, json);
+        await db.StringSetAsync(key, json, KeyTtl);
         _logger.LogDebug("Session {SessionId}: state saved ({Length} chars)", sessionId, json.Length);
     }
 
