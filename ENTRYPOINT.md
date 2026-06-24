@@ -2,7 +2,9 @@
 
 ## О проекте
 
-**OilFieldPlatform** — система расчёта ионного состава пластовых и закачиваемых вод по нефтегазовым месторождениям. Проект реализует предметную область нефтепромысловых лабораторных исследований: ведение справочников (месторождения, скважины, объекты разработки, кустовые станции), учёт проб воды, расчёт эквивалентных концентраций ионов (мг-экв/л) и управление проектными расчётами.
+**OilFieldPlatform** — пример платформы для работы с базами данных нефтегазовых месторождений. Реализует базовый слой: справочники (месторождения, скважины, объекты разработки, кустовые станции), инфраструктуру доступа к данным (NHibernate, PostgreSQL/SQLite), репозитории, аудит, AutoMapper.
+
+**OilFieldPlatform.Calculation** — пример модуля расчётов на этой платформе: модель проекта, реактивные пробы воды с `BehaviorSubject`/`IObservable`, расчёт эквивалентных концентраций ионов (мг-экв/л), WebSocket-сервер, Redis-сессии, Vue.js-клиент.
 
 ## Технологический стек
 
@@ -10,29 +12,40 @@
 |---|---|---|
 | .NET | Платформа | 9.0 |
 | C# | Язык | 12+ |
-| NHibernate + FluentNHibernate | ORM | 3.4.1 |
+| ASP.NET Core | Web-сервер + WebSocket | 9.0 |
+| NHibernate + FluentNHibernate | ORM | 5.6.1 / 3.4.1 |
 | PostgreSQL / SQLite | СУБД | — |
-| Redis | Кеширование | — |
+| Redis | Кеширование / сессии | — |
+| StackExchange.Redis | Клиент Redis | 2.8.31 |
 | AutoMapper | Маппинг объектов | 15.1.1 |
 | System.Reactive (Rx.NET) | Реактивное программирование | 6.1.0 |
 | DynamicData | Реактивные коллекции | 9.4.31 |
+| NLog | Структурированное логирование | 5.4.0 |
 | SonarAnalyzer | Статический анализ кода | 10.9.0 |
+| Vue 3 + Vite | Фронтенд | — |
+| TypeScript | Типизация фронтенда | — |
 
 ## Архитектура
 
-Проект разделён на три слоя, каждый в отдельной сборке:
+Платформа разделена на слои:
 
 ```
 OilFieldPlatform.Domain                  # Слой домена: сущности, интерфейсы, перечисления, проекции
     ↑
 OilFieldPlatform.Infrastructure          # Слой инфраструктуры: NHibernate-маппинги, репозитории, настройки
     ↑
-OilFieldPlatform.Calculation.Core        # Слой бизнес-логики: сервисы, расчёты, модели, AutoMapper
+OilFieldPlatform.Calculation.Core        # Бизнес-логика расчётного модуля
+    ↑
+OilFieldPlatform.Calculation.Server      # ASP.NET Core хост: WebSocket, контроллеры, Redis-сессии
+    ↑
+OilFieldPlatform.Calculation.WebClient   # Vue 3 + TypeScript фронтенд
 ```
 
-- **Domain** — чистый .NET, без внешних зависимостей. Содержит сущности с `virtual`-свойствами (NHibernate lazy loading), интерфейсы `IEntity<T>`, `IAuditable`, `ICationSample`, `IAnionSample` и перечисления.
-- **Infrastructure** — реализация доступа к данным: NHibernate-маппинги (`ClassMap<T>`), репозитории (базовый `ABCRepository<T>` с CRUD), провайдеры БД (SQLite InMemory, SQLite файловая, PostgreSQL), NHibernate-слушатели для аудита.
-- **Calculation.Core** — расчётный движок: сервис управления проектами (`ManageProjectService`), калькулятор эквивалентов (`WaterSampleEquivalentCalculator`), реактивные модели с `BehaviorSubject`/`IObservable`, AutoMapper-профили.
+- **Domain** — чистый .NET, без внешних зависимостей. Сущности с `virtual`-свойствами (NHibernate lazy loading), интерфейсы `IEntity<T>`, `IAuditable`, `ICationSample`, `IAnionSample`, `IRecord`, перечисления `WaterType`, `ClusterStationType`.
+- **Infrastructure** — NHibernate-маппинги (`ClassMap<T>`), репозитории (базовый `ABCRepository<T>` с CQRS-light: ReadRepository / Repository), провайдеры БД (SQLite InMemory, SQLite файловая, PostgreSQL), NHibernate-слушатели для аудита (`AuditableListener`), настройки БД/Redis.
+- **Calculation.Core** — реактивные модели (`ProjectModel`, `WaterSampleModel`, `WaterSampleEquivalentData`), сервисы (`ManageProjectService`, `ListProjectService`, `WaterSampleEquivalentCalculator`), AutoMapper-профили (`ProjectProfile`), прокси-модели для UI (`ProjectProxyModel`, `WaterSampleProxyModel`), состояние приложения (`ApplicationState`).
+- **Calculation.Server** — ASP.NET Core minimal API, WebSocket-эндпоинт (`/ws`), контроллеры запросов/ответов (`ApplicationController`, `WaterSamplePageController`), сериализуемые JSON Schema (typed request/response через `IWebSocketResponse` с `JsonDerivedType`), сервис управления сессиями (`AppStateLoader`), логгирование в WebSocket (`LoggerForwarder`).
+- **Calculation.WebClient** — Vite + Vue 3 + TypeScript, typed API-слой (`api/ws.ts`), frontend-схемы запросов/ответов (`api/schemas/`), компоненты (`WaterSampleTable`, `LogPanel`), страницы (`WaterSampleCalcPage`).
 
 ## Начало работы
 
@@ -96,40 +109,102 @@ OilFieldPlatform.Domain/
 │   │   └── ClusterStationEntity.cs   # КНС / ДНС
 │   └── Calculation/
 │       ├── CalcProjectEntity.cs      # Проект расчёта
-│       └── CalcWaterSampleEntity.cs  # Проба воды в проекте
+│       ├── CalcWaterSampleEntity.cs  # Проба воды в проекте
 │       └── Data/
 │           └── CalcWaterSampleEquivalentRecord.cs  # Эквивалентные концентрации
 ├── Enums/
 │   ├── ClusterStationType.cs         # KNS / DNS
 │   └── WaterType.cs                  # Reservoir / Injection
-├── Interfaces/                       # IEntity<T>, IAuditable, IAnionSample, ICationSample и др.
+├── Interfaces/                       # IEntity<T>, IAuditable, IAnionSample, ICationSample, IRecord и др.
 └── Projections/                      # DTO для read-only запросов
+    ├── Common/                       # OilFieldProjection, WellProjection и др.
+    └── Calculation/                  # CalcProjectProjection
 
 OilFieldPlatform.Infrastructure/
+├── Extensions/
 ├── Mapping/                          # NHibernate ClassMap<T> для всех сущностей
+│   ├── Common/                       # OilFieldMap, WellMap и др.
+│   └── Calculation/                  # CalcProjectMap, CalcWaterSampleMap, CalcWaterSampleEquivalentRecordMap
 ├── Providers/
 │   ├── DbConfigProvider.cs           # Фабрика SessionFactory (SQLite/PostgreSQL/InMemory)
 │   ├── UserNameProvider.cs           # Определение текущего пользователя
 │   ├── AuditableListener.cs          # NHibernate event listener для аудита
 │   └── DbListenerRegistry.cs
-├── Repositories/                     # ABCRepository<T> + ReadRepository / Repository для каждой сущности
-└── Settings/                         # AppSettings, DbSettings, RedisSettings
+├── Repositories/
+│   ├── ABC/
+│   │   ├── ABCRepository.cs          # Базовый CRUD
+│   │   └── ABCReadRepository.cs      # Базовый read-only
+│   ├── Common/                       # OilFieldRepository, WellRepository и др.
+│   └── Calculation/                  # CalcProjectRepository
+└── Settings/                         # DbSettings
 
 OilFieldPlatform.Calculation.Core/
 ├── Mapping/
-│   └── ProjectProfile.cs            # AutoMapper профиль (Domain ↔ Model)
+│   └── ProjectProfile.cs            # AutoMapper профиль (Domain Entity ↔ Model)
 ├── Models/
-│   ├── OilField.cs                   # Модель месторождения
-│   ├── DevTarget.cs                  # Модель объекта разработки
-│   ├── WaterSample.cs                # Реактивная модель пробы воды
-│   ├── Project.cs                    # Реактивная модель проекта
+│   ├── OilFieldModel.cs              # Модель месторождения
+│   ├── DevTargetModel.cs             # Модель объекта разработки
+│   ├── WaterSampleModel.cs           # Реактивная модель пробы воды (BehaviorSubject<double?>)
+│   ├── ProjectModel.cs               # Реактивная модель проекта (SourceList<WaterSampleModel>)
 │   └── Data/
-│       └── WaterSampleEquivalent.cs  # Модель эквивалентов
+│       └── WaterSampleEquivalentData.cs  # Модель эквивалентов (BehaviorSubject)
+├── Proxies/
+│   ├── ProjectProxyModel.cs          # Прокси для UI (ApplicationHeaderState)
+│   └── WaterSampleProxyModel.cs      # Прокси для UI (список проб)
+├── Services/
+│   ├── Calculators/
+│   │   └── WaterSampleEquivalentCalculator.cs  # Расчёт мг-экв/л
+│   ├── ListProjectService.cs         # Список проектов
+│   └── ManageProjectService.cs       # CRUD для проектов
+└── States/
+    ├── ApplicationState.cs           # Состояние приложения (текущий проект)
+    └── UI/
+        ├── ApplicationHeaderState.cs  # UI-состояние заголовка
+        └── WaterSamplePageState.cs    # UI-состояние страницы проб (SourceList<WaterSampleProxyModel>)
+
+OilFieldPlatform.Calculation.Server/
+├── Program.cs                        # Точка входа: DI, WebSocket /ws, статика
+├── appsettings.json                  # Конфигурация (БД, Redis, NLog)
+├── Controllers/
+│   ├── IWebSocketController.cs       # Интерфейс контроллера
+│   ├── ApplicationController.cs      # Контроллер приложения (проекты, состояние, isChanged)
+│   └── WaterSamplePageController.cs  # Контроллер страницы проб (редактирование, расчёт, connect)
+├── Schemas/
+│   ├── IWebSocketRequest.cs          # Базовый интерфейс запроса
+│   ├── IWebSocketResponse.cs         # Базовый интерфейс ответа (JsonDerivedType + TypeDiscriminator)
+│   ├── IApplicationRequest.cs
+│   ├── IApplicationResponse.cs
+│   ├── IWaterSamplePageRequest.cs
+│   ├── IWaterSamplePageResponse.cs
+│   ├── Requests/                     # Типизированные запросы (11 файлов)
+│   └── Responses/                    # Типизированные ответы (14 файлов)
 └── Services/
-    ├── Calculators/
-    │   ├── ISubjectCalculator.cs      # Интерфейс калькулятора
-    │   └── WaterSampleEquivalentCalculator.cs  # Расчёт мг-экв/л
-    └── ManageProjectService.cs       # CRUD для проектов
+    ├── WebSocketService.cs           # WebSocket-хост: маршрутизация, сессии, автосохранение
+    ├── AppStateLoader.cs             # Сохранение/восстановление состояния через Redis
+    └── LoggerForwarder.cs            # Прокси-логгер: Warning+ → WebSocket
+
+OilFieldPlatform.Calculation.WebClient/
+├── index.html
+├── vite.config.ts
+├── tsconfig.json
+├── src/
+│   ├── main.ts
+│   ├── App.vue                       # Корневой компонент
+│   ├── assets/main.css               # Стили (CSS custom properties)
+│   ├── api/
+│   │   ├── ws.ts                     # typed WebSocket API (send/on для каждого типа)
+│   │   └── schemas/
+│   │       ├── requests/             # 11 файлов + index.ts с discriminated union
+│   │       └── responses/            # 12 файлов + index.ts с discriminated union
+│   ├── composables/
+│   │   └── useWebSocket.ts           # WebSocket composable (connect, send, on, sessionId)
+│   ├── components/
+│   │   ├── AppHeader.vue
+│   │   ├── ProjectDialog.vue
+│   │   ├── WaterSampleTable.vue      # Таблица проб с radio + pie-chart
+│   │   └── LogPanel.vue              # Панель лога сервера
+│   └── pages/
+│       └── WaterSampleCalcPage.vue   # Страница расчёта проб
 ```
 
 ## Ключевые архитектурные решения
@@ -139,17 +214,32 @@ OilFieldPlatform.Calculation.Core/
 Для каждой сущности существует два класса:
 
 - **ReadRepository** (`OilFieldReadRepository`, `WellReadRepository` и т.д.) — только чтение: `GetAll()`, `GetById()`, `Load()`, `GetProjections()`.
-- **Repository** (`OilFieldRepository`, `WellRepository` и т.д.) — наследует ReadRepository, добавляет запись: `Add()`, `Update()`, `Delete()`. Методы записи скрыты через `new`, так как базовый класс `ABCRepository` объявляет их как `protected`.
+- **Repository** (`OilFieldRepository`, `WellRepository` и т.д.) — наследует ReadRepository, добавляет запись: `Add()`, `Update()`, `Delete()`. Методы записи скрыты через `new`.
 
 ### Аудит
 
-Сущности, реализующие `IAuditable`, автоматически заполняют поля `CreatedAt`/`UpdatedAt`/`CreatedBy`/`UpdatedBy` через NHibernate event listener `AuditableListener`. Пользователь определяется через `UserNameProvider` (AsyncLocal → ClaimsPrincipal → Environment.UserName).
+Сущности, реализующие `IAuditable`, автоматически заполняют поля `CreatedAt`/`UpdatedAt`/`CreatedBy`/`UpdatedBy` через NHibernate event listener `AuditableListener`. Пользователь определяется через `UserNameProvider` (AsyncLocal).
 
 ### Реактивные модели
 
-`WaterSample` использует `BehaviorSubject<double?>` для каждой концентрации иона. После изменения любого иона `WaterSampleEquivalentCalculator` пересчитывает эквиваленты. Подписки осуществляются через `IObservable<double?>`.
+`WaterSampleModel` использует `BehaviorSubject<double?>` для каждой концентрации иона. При изменении любого иона `WaterSampleEquivalentCalculator` пересчитывает эквиваленты. `ProjectModel` использует `DynamicData.SourceList<WaterSampleModel>` для коллекции проб.
 
-`Project` использует `DynamicData.SourceList<WaterSample>` для управления коллекцией проб.
+### WebSocket + типизированные схемы
+
+Сервер использует `[JsonDerivedType(TypeDiscriminatorPropertyName = "type")]` для полиморфной сериализации/десериализации запросов и ответов. Дискриминатор `type` автоматически проставляется при сериализации через `IWebSocketResponse`. На фронтенде — аналогичные discriminated union-типы в TypeScript.
+
+### Управление сессиями
+
+При подключении клиент передаёт `sessionId` через query-параметр `ws?sessionId=...`. Сервер восстанавливает состояние (открытый проект, пробы) из Redis. Если `sessionId` не передан — генерируется новый UUID. Состояние сохраняется:
+- При изменении проекта (`ProjectAsObservable` / `IsChangedAsObservable`, throttle 2s)
+- Каждую минуту в цикле `HandleAsync`
+- При закрытии соединения
+
+Сессия хранит полный слепок несохранённого проекта (OilField, DevTarget, WaterSamples, эквиваленты) через snapshot-модели.
+
+### WebSocket-логгер
+
+`LoggerForwarder` оборачивает `ILogger<WaterSamplePageController>` и отправляет сообщения уровня Warning+ через `IWebSocketController.PublishLog()` → `OnChanged` → WebSocket. Фронтенд показывает последние 10 записей в `LogPanel`.
 
 ### NHibernate особенности
 
@@ -161,7 +251,7 @@ OilFieldPlatform.Calculation.Core/
 
 ### Маппинг (AutoMapper)
 
-`ProjectProfile.cs` маппит между доменными сущностями и расчётными моделями. Для маппинга NHibernate-прокси (Entity → Model) требуется передача `ISession` через `Items`-словарь контекста маппинга.
+`ProjectProfile.cs` маппит доменные сущности в расчётные модели. Для маппинга NHibernate-прокси (Entity → Model) требуется передача `ISession` через `Items`-словарь контекста.
 
 ## Сборка и линтинг
 
@@ -174,6 +264,10 @@ dotnet format
 
 # Полная проверка с SonarAnalyzer
 dotnet build --no-restore
+
+# Сборка фронтенда
+cd OilFieldPlatform.Calculation/OilFieldPlatform.Calculation.WebClient
+npm run build
 ```
 
 В `Directory.Build.props` включены:
@@ -184,6 +278,6 @@ dotnet build --no-restore
 
 ## Замечания
 
-- Проектные файлы — только библиотеки классов. Хост-приложение (веб/консоль/WebSocket) пока отсутствует.
 - Тестовые проекты отсутствуют.
 - CI/CD не настроен.
+- Требуется локальный Redis для работы сессий (конфигурация `Redis:Host`/`Redis:Port` в `appsettings.json`).
