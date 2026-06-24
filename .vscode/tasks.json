@@ -1,0 +1,98 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build: Calculation.Server",
+      "command": "dotnet",
+      "type": "process",
+      "args": [
+        "build",
+        "${workspaceFolder}/OilFieldPlatform.Calculation/OilFieldPlatform.Calculation.Server/OilFieldPlatform.Calculation.Server.csproj",
+        "/property:GenerateFullPaths=true",
+        "/consoleloggerparameters:NoSummary;ForceNoAlign"
+      ],
+      "problemMatcher": "$msCompile",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "run: Calculation.Server",
+      "command": "dotnet",
+      "type": "process",
+      "args": [
+        "run",
+        "--project",
+        "${workspaceFolder}/OilFieldPlatform.Calculation/OilFieldPlatform.Calculation.Server/OilFieldPlatform.Calculation.Server.csproj"
+      ],
+      "problemMatcher": [],
+      "dependsOn": ["build: Calculation.Server"],
+      "dependsOrder": "sequence",
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "watch: Calculation.Server",
+      "command": "dotnet",
+      "type": "process",
+      "args": [
+        "watch",
+        "run",
+        "--project",
+        "${workspaceFolder}/OilFieldPlatform.Calculation/OilFieldPlatform.Calculation.Server/OilFieldPlatform.Calculation.Server.csproj"
+      ],
+      "problemMatcher": "$msCompile",
+      "group": "test"
+    },
+    {
+      "label": "githooks: install",
+      "command": "git",
+      "type": "shell",
+      "args": [
+        "config",
+        "core.hooksPath",
+        ".githooks"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "githooks: run pre-commit",
+      "command": ".githooks/pre-commit",
+      "type": "shell",
+      "args": [],
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "dev: WebClient",
+      "command": "npx",
+      "type": "shell",
+      "args": [
+        "vite",
+        "--host"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/OilFieldPlatform.Calculation/OilFieldPlatform.Calculation.WebClient"
+      },
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "build: WebClient",
+      "command": "npx",
+      "type": "shell",
+      "args": [
+        "vite",
+        "build"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/OilFieldPlatform.Calculation/OilFieldPlatform.Calculation.WebClient"
+      },
+      "problemMatcher": [],
+      "group": "build"
+    }
+  ]
+}

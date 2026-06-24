@@ -1,0 +1,16 @@
+#!/bin/bash
+set -e
+
+echo "=== dotnet format: whitespace ==="
+dotnet format whitespace --verbosity minimal
+
+echo "=== dotnet format: style ==="
+dotnet format style --verbosity minimal
+
+echo "=== dotnet format: analyzers (unused usings + sort usings) ==="
+dotnet format analyzers --diagnostics IDE0005,IDE0065 --verbosity minimal --severity info
+
+echo "=== dotnet build ==="
+dotnet build --no-restore
+
+echo "=== OK ==="

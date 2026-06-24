@@ -1,0 +1,28 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.sln.docstates
+*.userprefs
+*.csproj.user
+
+# NuGet
+**/[Pp]ackages/*
+*.nupkg
+packages/
+
+# Database
+*.db
+
+# Runfile discovery cache
+dotnet/runfile-discovery/
+
+# IDE
+.vs/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+tmp/

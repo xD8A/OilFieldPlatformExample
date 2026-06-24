@@ -1,0 +1,6 @@
+@OilFieldPlatform.Calculation.Server_HostAddress = http://localhost:5290
+
+GET {{OilFieldPlatform.Calculation.Server_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

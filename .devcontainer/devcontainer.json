@@ -1,0 +1,28 @@
+{
+    "name": "Oil WebSocket App",
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
+    "forwardPorts": [5000, 5001],
+    "portsAttributes": {
+        "5000": {
+            "label": "HTTP",
+            "onAutoForward": "notify"
+        },
+        "5001": {
+            "label": "HTTPS",
+            "onAutoForward": "notify"
+        }
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-dotnettools.csharp",
+                "ms-dotnettools.csdevkit"
+            ]
+        }
+    },
+    "postCreateCommand": "dotnet restore",
+    "postStartCommand": "sudo /start-services.sh",
+    "remoteUser": "vscode"
+}
